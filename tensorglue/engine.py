@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import scipy as sp
 import scipy.sparse
 from scipy.sparse.linalg import svds
@@ -179,8 +180,8 @@ class RecommenderData(object):
                 #self.test.pivot_table(index=[userid, itemid], values=values, aggfunc='max').to_frame(values).reset_index()
                 eval_grouper = self.test.groupby(userid, sort=False)[values]
                 eval_idx = eval_grouper.nlargest(lastn).index.get_level_values(1)
-            else: #contextual 2D
-                print 'summarizing contextual values'
+            else: #contextual 2D - this is for modified SVD
+                print 'Summarizing contextual values'
                 context_values = self._contextualize(self.test).to_frame(values)
 
                 self.test.loc[:, values] = context_values[values]
@@ -194,8 +195,8 @@ class RecommenderData(object):
                 #aggregate indices for evaluation set
                 eval_idx = eval_grouper.apply(lambda x: x.nlargest(lastn, values)['index']).sum()
                 eval_idx = list(eval_idx)
-        elif arrange_by == contextid: #full context
-            print 'maximizing contextual values'
+        elif arrange_by == contextid: #full context, Tensor-based approach
+            print 'Maximizing contextual values'
             context_values = self._contextualize(self.test).to_frame(values)
 
             self.test.loc[:, values] = context_values[values]
@@ -283,10 +284,10 @@ class RecommenderData(object):
             #svd_shp = self.train[[userid, itemid]].max()+1
             #.tocsr() will accumulate duplicates values (having different context)
             svd_matrix = sp.sparse.coo_matrix((svd_val, svd_idx),
-                                              dtype=pd.np.float64).tocsr() #shape=svd_shp
+                                              dtype=np.float64).tocsr() #shape=svd_shp
 
             _, _, items_factors = svds(svd_matrix, k=svd_rank, return_singular_vectors='vh')
-            self._items_factors = pd.np.ascontiguousarray(items_factors[::-1, :])
+            self._items_factors = np.ascontiguousarray(items_factors[::-1, :])
 
         elif model.lower() == 'i2i':
             if contextid:
@@ -309,7 +310,7 @@ class RecommenderData(object):
 
     def evaluate(self, topk=10):
         all_recs = self._get_recommendations()
-        top_recs = pd.np.argpartition(all_recs, -topk, axis=1)[:, -topk:]
+        top_recs = np.argpartition(all_recs, -topk, axis=1)[:, -topk:]
         scores = self._get_scores(top_recs)
         return scores
 
@@ -331,7 +332,7 @@ class RecommenderData(object):
 
         test_matrix = sp.sparse.coo_matrix((test_val, test_idx),
                                            shape=test_shp,
-                                           dtype=pd.np.float64).tocsr()
+                                           dtype=np.float64).tocsr()
 
         svd_scores = (test_matrix.dot(v.T)).dot(v)
         return svd_scores
@@ -365,16 +366,17 @@ class RecommenderData(object):
         #but it's unstable in pandas v. 17.0, only works in 17.1 or <17.0
         eval_data = self.test.evalset.drop_duplicates(subset=[userid, itemid]).sort_values(userid)[itemid]
         #TODO: sort only if not monotonic
-        eval_matrix = eval_data.values.reshape(-1, self.eval_num).astype(pd.np.int64)
+        eval_matrix = eval_data.values.reshape(-1, self.eval_num).astype(np.int64)
         scores = (recs[:, :, None] == eval_matrix[:, None, :]).sum()
         return scores
 
 
     def _build_i2i_matrix(self):
+        #TODO: there's a faster way to build matrix
         userid, itemid = self.fields.userid, self.fields.itemid
         def pair_items(df):
             sz = df.shape[0]
-            from_idx = pd.np.repeat(xrange(sz), sz-1)
+            from_idx = np.repeat(xrange(sz), sz-1)
             to_idx = sp.linalg.hankel(xrange(1, sz), xrange(-1, sz-1)).ravel()
             items = df[itemid].values
             new_df = pd.DataFrame({'from_item': items[from_idx],
@@ -384,22 +386,23 @@ class RecommenderData(object):
         max_item = self.train[itemid].max() + 1
         filtered_by_size = self.train.groupby(userid, sort=False).filter(lambda x: x.shape[0]>1)
         i2i_links = filtered_by_size.groupby(userid, sort=False).apply(pair_items)
-        i2i_matrix = sp.sparse.coo_matrix((pd.np.ones(i2i_links.shape[0],),
+        i2i_matrix = sp.sparse.coo_matrix((np.ones(i2i_links.shape[0],),
                                       (i2i_links['from_item'], i2i_links['to_item'])),
                                       shape=(max_item,)*2).tocsc()
         return i2i_matrix
+
 
     def i2i_recommender(self):
         userid, itemid = self.fields.userid, self.fields.itemid
         test_idx = (self.test.testset[userid].values,
                     self.test.testset[itemid].values)
-        test_val = pd.np.ones(self.test.testset.shape[0],)
+        test_val = np.ones(self.test.testset.shape[0],)
         test_shp = (self.test.testset[userid].max()+1,
                     self.index.itemid.new.max() + 1)
 
         test_matrix = sp.sparse.coo_matrix((test_val, test_idx),
                                            shape=test_shp,
-                                           dtype=pd.np.float64).tocsr()
+                                           dtype=np.float64).tocsr()
         #exploiting simmetric property of i2i matrix here
         i2i_scores = test_matrix.dot(self._i2i_matrix)
         return i2i_scores.A
@@ -500,7 +503,7 @@ class RecommenderDataTyped(RecommenderData):
             #eval_data = self.test.evalset.groupby([userid, itemid], sort=False, as_index=False)\
             #                             .first().sort_values(userid)[[itemid, typeid]]
             eval_matrix = eval_data.set_index(typeid, append=True).unstack()[itemid]\
-                                  .fillna(-1).astype(pd.np.int64).values.reshape(-1, self.eval_num, self.types.size)
+                                  .fillna(-1).astype(np.int64).values.reshape(-1, self.eval_num, self.types.size)
             scores = (recs == eval_matrix.transpose(2, 1, 0)[..., None]).sum(axis=(1, 2, 3))
             #scores =  namedtuple('Scores', ['type{}'.format(i) for i in map(str, self.types)])._make(scores_by_type)
         else:
