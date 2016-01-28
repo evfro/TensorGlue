@@ -3,7 +3,7 @@ import scipy as sp
 import scipy.sparse
 from scipy.sparse.linalg import svds
 from collections import namedtuple
-
+from tensorglue.lib.hosvd import tucker_als
 
 
 class RecommenderData(object):
@@ -262,6 +262,9 @@ class RecommenderData(object):
 
         idx = self.train[idx_fields].values
         shp = self.train[idx_fields].max() + 1
+
+        idx = np.ascontiguousarray(idx)
+        val = np.ascontiguousarray(val)
         return idx, val, shp
 
 
@@ -295,7 +298,10 @@ class RecommenderData(object):
 
         elif model.lower() == 'tensor':
             self._get_recommendations = self.tensor_recommender
-            #u0, u1, u2, g = tucker_als(idx, val, shp, tensor_ranks, growth_tol=0.001)
+            idx, val, shp = self._to_coo()
+            _, items_factors, context_factors, _ = tucker_als(idx, val, shp, tensor_ranks, growth_tol=0.001)
+            self._items_factors = items_factors
+            self._context_factors = context_factors
 
         else:
             raise NotImplementedError
@@ -332,7 +338,25 @@ class RecommenderData(object):
 
 
     def tensor_recommender(self):
-        raise NotImplementedError
+        userid, itemid, contextid, values = self.fields
+        v = self._items_factors
+        w = self._context_factors
+
+        #TODO: split calculation into batches of users so that it doesn't
+        #blow computer memory out.
+        test_shp = (self.test.testset[userid].max()+1, v.shape[0], w.shape[0])
+        idx_data = self.test.testset.loc[:, [userid, itemid, contextid]].values.T.astype(np.int64)
+        idx_flat = np.ravel_multi_index(idx_data, test_shp)
+        shp_flat = (test_shp[0]*test_shp[1], test_shp[2])
+        idx = np.unravel_index(idx_flat, shp_flat)
+        #values are assumed to be contextualized already
+        val = self.test.testset[values].values
+        test_tensor_mat = sp.sparse.coo_matrix((val, idx), shape=shp_flat).tocsr()
+
+        tensor_scores = test_tensor_mat.dot(w).reshape(test_shp[0], test_shp[1], w.shape[1])
+        tensor_scores = np.tensordot(tensor_scores, v, axes=(1, 0))
+        tensor_scores = np.tensordot(np.tensordot(tensor_scores, v, axes=(2, 1)), w, axes=(1, 1))
+        return tensor_scores.max(axis=2)
 
 
     def _get_scores(self, recs):
