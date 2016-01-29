@@ -20,7 +20,7 @@ class RecommenderData(object):
         data, values = self._aggregate_data(data, dup_fields, values, timeid)
 
         #initialize instance attributes
-        self._data = data.sort_values(dup_fields)
+        self._data = data
         self.fields = namedtuple('Fields', self._std_fields)._make(map(eval, self._std_fields))
         self.arrange_by = timeid or contextid or values
 
