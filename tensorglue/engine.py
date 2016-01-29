@@ -27,6 +27,8 @@ class RecommenderData(object):
         self.index = namedtuple('DataIndex', self._std_fields[:3])._make([None]*3)
         if contextid:
             self.index = self.index._replace(contextid=self.reindex(self._data, contextid))
+        #_chunk used to split tensor decompositions into smaller pieces in memory
+        self._chunk = 1000
 
 
     @staticmethod
@@ -354,10 +356,19 @@ class RecommenderData(object):
         val = self.test.testset[values].values
         test_tensor_mat = sp.sparse.coo_matrix((val, idx), shape=shp_flat).tocsr()
 
-        tensor_scores = test_tensor_mat.dot(w).reshape(test_shp[0], test_shp[1], w.shape[1])
-        tensor_scores = np.tensordot(tensor_scores, v, axes=(1, 0))
-        tensor_scores = np.tensordot(np.tensordot(tensor_scores, v, axes=(2, 1)), w, axes=(1, 1))
-        return tensor_scores.max(axis=2)
+        tensor_scores = np.empty((test_shp[0], test_shp[1]))
+        chunk = self._chunk
+        for i in xrange(0, test_shp[0], chunk):
+            start = i
+            stop = min(i+chunk, test_shp[0])
+
+            test_slice = test_tensor_mat[start*test_shp[1]:stop*test_shp[1], :]
+            slice_scores = test_slice.dot(w).reshape(stop-start, test_shp[1], w.shape[1])
+            slice_scores = np.tensordot(slice_scores, v, axes=(1, 0))
+            slice_scores = np.tensordot(np.tensordot(slice_scores, v, axes=(2, 1)), w, axes=(1, 1))
+            tensor_scores[start:stop, :] = slice_scores.max(axis=2)
+
+        return tensor_scores
 
 
     def _get_scores(self, recs):
