@@ -12,4 +12,4 @@ Current version was tested only on Windows x64 with latest anaconda package. Maj
 * numpy
 * numba (used only for tensor decomposition)
 
-**Important note:** Please, be aware, that evaluation of tensor method is currently not optimized and requires huge amount of memory. This will be fixed shortly.
+**Important note:** Please, be aware, that evaluation of tensor factorization method is performed in batch (e.g. for all test users at once) and requires considerable amount of computer memory. Memory load can be controlled with `chunk` attribute of the model. General advise is to have PC with >8Gb of RAM.
