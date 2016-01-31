@@ -125,7 +125,8 @@ class RecommenderData(object):
                 print 'Warning: there\'s not enough users satisfying test set criterias.'
             test_users_num = min(test_users_all, test_users_max)
         else:
-            test_users_num = test_users_max
+            raise NotImplementedError
+            #test_users_num = test_users_max
 
         #TODO: add option to choose users randomly
         test_users_pos = test_users_sel.cumsum() > (test_users_all - test_users_num)
