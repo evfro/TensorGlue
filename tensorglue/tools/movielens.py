@@ -15,7 +15,7 @@ def get_movielens_data(local_file=None, get_genres=False):
         #print 'Done.'
     else:
         zip_contents = local_file
-    
+
     #print 'Loading data into memory...'
     with ZipFile(zip_contents) as zfile:
         zdata = zfile.read('ml-10M100K/ratings.dat')
@@ -24,20 +24,20 @@ def get_movielens_data(local_file=None, get_genres=False):
         ml_data = pd.read_csv(StringIO(zdata), sep=delimiter, header=None, engine='c',
                                 names=['userid', 'movieid', 'rating', 'timestamp'],
                                 usecols=['userid', 'movieid', 'rating'])
-        
+
         if get_genres:
             with zfile.open('ml-10M100K/movies.dat') as zdata:
                 delimiter = '::'
                 genres_data = pd.read_csv(zdata, sep=delimiter, header=None, engine='python',
                                             names=['movieid', 'movienm', 'genres'])
-            
+
             ml_genres = split_genres(genres_data)
             ml_data = (ml_data, ml_genres)
-    
+
     return ml_data
 
-    
-def split_genres(genres_data):    
+
+def split_genres(genres_data):
     genres_split = genres_data['genres'].str.split('|')
     ml_genres = pd.merge(genres_data[['movieid', 'movienm']],
                          genres_split.apply(pd.Series),
@@ -45,3 +45,14 @@ def split_genres(genres_data):
     ml_genres = ml_genres.set_index(['movieid', 'movienm']).stack().reset_index(level=2, drop=True)
     ml_genres = ml_genres.to_frame('genreid').reset_index()
     return ml_genres
+
+
+def filter_short_head(data, threshold=0.01):
+    short_head = data.groupby('movieid', sort=False)['userid'].nunique()
+    short_head.sort_values(ascending=False, inplace=True)
+
+    ratings_perc = short_head.cumsum()*1.0/short_head.sum()
+    movies_perc = pd.np.arange(1, len(short_head)+1, dtype=pd.np.float64) / len(short_head)
+
+    long_tail_movies = ratings_perc[movies_perc > threshold].index
+    return long_tail_movies
