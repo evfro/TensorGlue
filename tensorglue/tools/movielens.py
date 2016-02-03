@@ -18,7 +18,9 @@ def get_movielens_data(local_file=None, get_genres=False):
 
     #print 'Loading data into memory...'
     with ZipFile(zip_contents) as zfile:
-        zdata = zfile.read('ml-10M100K/ratings.dat')
+        zip_files = pd.Series(zfile.namelist())
+        zip_file = zip_files[zip_files.str.endswith('ratings.dat')].iat[0]
+        zdata = zfile.read(zip_file)
         delimiter = ';'
         zdata = zdata.replace('::', delimiter) # makes data compatible with pandas c-engine
         ml_data = pd.read_csv(StringIO(zdata), sep=delimiter, header=None, engine='c',
@@ -26,7 +28,8 @@ def get_movielens_data(local_file=None, get_genres=False):
                                 usecols=['userid', 'movieid', 'rating'])
 
         if get_genres:
-            with zfile.open('ml-10M100K/movies.dat') as zdata:
+            zip_file = zip_files[zip_files.str.endswith('movies.dat')].iat[0]
+            with zfile.open(zip_file) as zdata:
                 delimiter = '::'
                 genres_data = pd.read_csv(zdata, sep=delimiter, header=None, engine='python',
                                             names=['movieid', 'movienm', 'genres'])
