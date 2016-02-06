@@ -384,23 +384,18 @@ class RecommenderData(object):
 
 
     def _build_i2i_matrix(self):
-        #TODO: there's a faster way to build matrix
         userid, itemid = self.fields.userid, self.fields.itemid
-        def pair_items(df):
-            sz = df.shape[0]
-            from_idx = np.repeat(xrange(sz), sz-1)
-            to_idx = sp.linalg.hankel(xrange(1, sz), xrange(-1, sz-1)).ravel()
-            items = df[itemid].values
-            new_df = pd.DataFrame({'from_item': items[from_idx],
-                                   'to_item': items[to_idx]})
-            return new_df
 
-        max_item = self.train[itemid].max() + 1
-        filtered_by_size = self.train.groupby(userid, sort=False).filter(lambda x: x.shape[0]>1)
-        i2i_links = filtered_by_size.groupby(userid, sort=False).apply(pair_items)
-        i2i_matrix = sp.sparse.coo_matrix((np.ones(i2i_links.shape[0],),
-                                      (i2i_links['from_item'], i2i_links['to_item'])),
-                                      shape=(max_item,)*2).tocsc()
+        shape = self.train[[userid, itemid]].max() + 1
+        user_item = sp.sparse.coo_matrix((np.ones_like(self.train[userid].values),
+                                      (self.train[userid].values, self.train[itemid].values)),
+                                      shape=shape).tocsc()
+                                      
+        i2i_matrix = user_item.T.dot(user_item)
+        #exclude self-links
+        diag_vals = i2i_matrix.diagonal()
+        i2i_matrix -= sp.sparse.dia_matrix((diag_vals, 0), shape=i2i_matrix.shape)
+        #see http://nbviewer.jupyter.org/gist/Midnighter/9992103 for benchmark
         return i2i_matrix
 
 
