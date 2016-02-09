@@ -4,7 +4,7 @@ This is a very early python implementation of recsys engine that currently inclu
 * SVD-based matrix factorization
 * tensor factorization
 
-Contextual information (such as movie genre or product category) is encapsulated into an additional dimension, s.t. full data is represented as a 3rd order tensor. Encapsulation of the contextual information requires additional pre-processing which was described in my talk at [TDA 2016](http://www.esat.kuleuven.be/stadius/TDA2016/program.php) conference and will be also explained in my future paper.
+Additional categorical information (such as movie genre or product category) is encapsulated into new dimension, s.t. full data is represented as a 3rd order tensor. Encapsulation of that type of information requires additional pre-processing which was described in my talk at [TDA 2016](http://www.esat.kuleuven.be/stadius/TDA2016/program.php) conference and will be also explained in my future paper.
 Pre-processing is implemented for both matrix (optionally) and tensor factorization.
 
 Current version was tested only on Windows x64 with latest anaconda package. Major dependencies are:
