@@ -41,12 +41,9 @@ def get_movielens_data(local_file=None, get_genres=False):
 
 
 def split_genres(genres_data):
-    genres_split = genres_data['genres'].str.split('|')
-    ml_genres = pd.merge(genres_data[['movieid', 'movienm']],
-                         genres_split.apply(pd.Series),
-                         left_index=True, right_index=True)
-    ml_genres = ml_genres.set_index(['movieid', 'movienm']).stack().reset_index(level=2, drop=True)
-    ml_genres = ml_genres.to_frame('genreid').reset_index()
+    genres_data.index.name = 'movie_idx'
+    genres_stacked = genres_data.genres.str.split('|', expand=True).stack().to_frame('genreid')
+    ml_genres = genres_data[['movieid', 'movienm']].join(genres_stacked).reset_index(drop=True)
     return ml_genres
 
 
